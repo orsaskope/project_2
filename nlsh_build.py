@@ -13,7 +13,7 @@ def main():
         data = read_sift(p.input)
 
     print("Dataset loaded.")
-    exec_path = "../../PRJ1/project_1/search"
+    exec_path = "./search"
     result = subprocess.run(
     [exec_path, "-ivfflat",
     "-type", "mnist",
@@ -33,7 +33,7 @@ def main():
     print("STDERR:\n", result.stderr)
     print("CODE:", result.returncode)
 
-    output_path = "../../PRJ1/project_1/output.txt"
+    output_path = "./output.txt"
     graph = read_knn_output(output_path)
 
 # Read first project's output to build the graph
