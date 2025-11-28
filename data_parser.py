@@ -90,9 +90,15 @@ def BuildParser(argv):
             p.seed = int(argv[i])
         i += 1
     
-    if p.input is None: sys.exit(1)
-    if p.index_path is None: sys.exit(1)
-    if p.type is None: sys.exit(1)
+    if p.input is None:
+        print("there is no input file")
+        sys.exit(1)
+    if p.index_path is None:
+        print("there is no index path")
+        sys.exit(1)
+    if p.type is None:
+        print("there is not a given type")
+        sys.exit(1)
     return p
 
 # ============================= SEARCH =============================
