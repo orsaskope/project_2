@@ -154,17 +154,17 @@ int main(int argc, char* argv[]) {
         exit(errno);
     }
 
-    FILE* fdi = fopen(p->query.c_str(), "r");
-    if (fdi == NULL) {
-        perror("Failed to open query file");
-        exit(errno);
-    }
+    // FILE* fdi = fopen(p->query.c_str(), "r");
+    // if (fdi == NULL) {
+    //     perror("Failed to open query file");
+    //     exit(errno);
+    // }
 
 
     if (p->algorithm == 2) {
         if (p->type == "mnist") {
             MNISTData mnist = readInputMnist(fd);
-            MNISTData query = readInputMnist(fdi);
+            // MNISTData query = readInputMnist(fdi);
 
             ivfflat = new IVFFLAT(p->seed, p->kclusters, p->nprobe, p->n, p->r, mnist.image_size);
 
@@ -175,25 +175,25 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            vector<vector<float>> query_float(query.number_of_images, vector<float>(query.image_size));
-            for (int i = 0; i < query.number_of_images; ++i) {
-                for (int j = 0; j < query.image_size; ++j) {
-                    query_float[i][j] = static_cast<float>(query.images[i][j]); 
-                }
-            }
+            // vector<vector<float>> query_float(query.number_of_images, vector<float>(query.image_size));
+            // for (int i = 0; i < query.number_of_images; ++i) {
+            //     for (int j = 0; j < query.image_size; ++j) {
+            //         query_float[i][j] = static_cast<float>(query.images[i][j]); 
+            //     }
+            // }
 
             if (!p->range) p->r = 0;
-            IvfflatSearch(image_float, ivfflat, query_float, p->o);
+            IvfflatSearch_KNN(image_float, ivfflat, p->o);
             cout << "retuned to search" << endl;
 
         }
         else if (p->type == "sift") {
             vector<vector<float>> dataset = readInputSift(fd);
-            vector<vector<float>> query = readInputSift(fdi);
+            // vector<vector<float>> query = readInputSift(fdi);
 
             ivfflat = new IVFFLAT(p->seed, p->kclusters, p->nprobe, p->n, p->r, 128);
             if (!p->range)  p->r = 0;
-            IvfflatSearch(dataset, ivfflat, query, p->o);
+            IvfflatSearch_KNN(dataset, ivfflat, p->o);
             cout << "retuned to search" << endl;
         }
     }

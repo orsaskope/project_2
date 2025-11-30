@@ -9,7 +9,7 @@ IVFFLAT::IVFFLAT(int seed_, int kclusters_, int nprobe_, int n_, int r_, int ima
     cout << "IVFFLAT constructor used" << endl;
 }
 
-void IvfflatSearch_KNN(imagesVector& dataset, IVFFLAT* ivfflat, imagesVector& queries, string output) {
+void IvfflatSearch_KNN(imagesVector& dataset, IVFFLAT* ivfflat, string output) {
     // Training
     clustering(dataset, ivfflat);
 
@@ -19,17 +19,20 @@ void IvfflatSearch_KNN(imagesVector& dataset, IVFFLAT* ivfflat, imagesVector& qu
         exit(errno);
     }
 
-    // For every query → ANN
-    for (int qi = 0; qi < (int)queries.size(); qi++) {
-        vector<int> top_clusters = QueryCentroidSearch(ivfflat, queries[qi]);   // Nearest entroids
-        auto results = QueryVectorSearch(ivfflat, queries[qi], qi, top_clusters, nullptr, dataset); // Nearest neighbours
+    // ANN for all dataset
+    for (int i = 0; i < (int)dataset.size(); i++) {
+        floatVec& q = dataset[i];
+
+        vector<int> top_clusters = QueryCentroidSearch(ivfflat, q);
+        auto results = QueryVectorSearch(ivfflat, q, i, top_clusters, nullptr, dataset);
 
         vector<pair<int,float>>& nn = results.first;
 
-        // --- output ---
-        fprintf(fout, "Query %d:", qi);
-        for (auto& p : nn)
-            fprintf(fout, " %d", p.first);   // only neighbor id
+        // Output
+        fprintf(fout, "NODE %d:", i);
+        for (auto& p : nn) {
+            fprintf(fout, " %d", p.first);
+        }
         fprintf(fout, "\n");
     }
 
@@ -37,105 +40,103 @@ void IvfflatSearch_KNN(imagesVector& dataset, IVFFLAT* ivfflat, imagesVector& qu
 }
 
 void IvfflatSearch(imagesVector& dataset, IVFFLAT* ivfflat, imagesVector queryfile, string output) {
-    using namespace std::chrono;
-    auto start = high_resolution_clock::now();
+    // using namespace std::chrono;
+    // auto start = high_resolution_clock::now();
 
-    FILE* fout = fopen(output.c_str(), "w");
-    if (!fout) {
-        perror("Failed to open output file");
-        exit(errno);
-    }
-    fprintf(fout, "IVFFlat\n");
-    fflush(fout);
+    // FILE* fout = fopen(output.c_str(), "w");
+    // if (!fout) {
+    //     perror("Failed to open output file");
+    //     exit(errno);
+    // }
+    // fprintf(fout, "IVFFlat\n");
+    // fflush(fout);
 
-    clustering(dataset, ivfflat);
-    auto end = high_resolution_clock::now();
-    duration<double> elapsed = end - start;
-    cout << "\nTraining completed in " << elapsed.count() << " seconds." << endl;
-    //float silhouette_score = silhouette (dataset, ivfflat);
+    // clustering(dataset, ivfflat);
+    // auto end = high_resolution_clock::now();
+    // duration<double> elapsed = end - start;
+    // cout << "\nTraining completed in " << elapsed.count() << " seconds." << endl;
+    // //float silhouette_score = silhouette (dataset, ivfflat);
    
-    double total_af = 0.0;           // Sum of all Approximation Factors (distanceApproximate / distanceTrue)
-    double total_recall = 0.0;       // Sum of all the true nearest neighbours that ivfflat found/N
-    double total_ivfflat_time = 0.0;   // Total IVFFLAT time
-    double total_brf_time = 0.0;     // Total brute force time
-    size_t Q = queryfile.size();       // Queries searched
-    int N = ivfflat->n;             // Nearest neighbours
-    cout << "searching.." << endl;
+    // double total_af = 0.0;           // Sum of all Approximation Factors (distanceApproximate / distanceTrue)
+    // double total_recall = 0.0;       // Sum of all the true nearest neighbours that ivfflat found/N
+    // double total_ivfflat_time = 0.0;   // Total IVFFLAT time
+    // double total_brf_time = 0.0;     // Total brute force time
+    // size_t Q = queryfile.size();       // Queries searched
+    // int N = ivfflat->n;             // Nearest neighbours
+    // cout << "searching.." << endl;
     
-    for (size_t i = 0; i < queryfile.size(); i++) {
-        fprintf(fout, "\nQuery: %zu\n", i);
-        fflush(fout);
-        cout << "searching..\nqueries = " << queryfile.size()
-        << "\ndataset = " << dataset.size() << endl;
+    // for (size_t i = 0; i < queryfile.size(); i++) {
+    //     fprintf(fout, "\nQuery: %zu\n", i);
+    //     fflush(fout);
         
-        // Search for queries' approximate nearest neighbours, count time.
-        auto t1 = high_resolution_clock::now();
-        vector<int> top_clusters = QueryCentroidSearch(ivfflat, queryfile[i]);
-        pair<vector<pair<int, float>>, vector<int>> results = QueryVectorSearch(ivfflat, queryfile[i], i, top_clusters, fout, dataset);
-        vector<pair<int, float>> nn_res = results.first;
-        vector<int> range_res = results.second;
-        auto t2 = high_resolution_clock::now();
-        double curr_ann_time = duration<double>(t2 - t1).count();
-        total_ivfflat_time += curr_ann_time;   // Add the current time to the total
+    //     // Search for queries' approximate nearest neighbours, count time.
+    //     auto t1 = high_resolution_clock::now();
+    //     vector<int> top_clusters = QueryCentroidSearch(ivfflat, queryfile[i]);
+    //     pair<vector<pair<int, float>>, vector<int>> results = QueryVectorSearch(ivfflat, queryfile[i], i, top_clusters, fout, dataset);
+    //     vector<pair<int, float>> nn_res = results.first;
+    //     vector<int> range_res = results.second;
+    //     auto t2 = high_resolution_clock::now();
+    //     double curr_ann_time = duration<double>(t2 - t1).count();
+    //     total_ivfflat_time += curr_ann_time;   // Add the current time to the total
 
-        // Search for queries actual nearest neighbours, cout time.
-        auto t3 = high_resolution_clock::now();
-        vector<pair<int, float>> brute_res = bruteForce(ivfflat, queryfile[i], i, fout, dataset);
-        auto t4 = high_resolution_clock::now();
-        double curr_true_time = duration<double>(t4 - t3).count();
-        total_brf_time += curr_true_time;
+    //     // Search for queries actual nearest neighbours, cout time.
+    //     auto t3 = high_resolution_clock::now();
+    //     vector<pair<int, float>> brute_res = bruteForce(ivfflat, queryfile[i], i, fout, dataset);
+    //     auto t4 = high_resolution_clock::now();
+    //     double curr_true_time = duration<double>(t4 - t3).count();
+    //     total_brf_time += curr_true_time;
 
-        double curr_af = nn_res[0].second / brute_res[0].second;
-        total_af += curr_af;
+    //     double curr_af = nn_res[0].second / brute_res[0].second;
+    //     total_af += curr_af;
 
-        // --- Recall@N ---
-        double recall = 0.0;
-        int correct = 0;
-        for (int ivfflat_n = 0; ivfflat_n < N; ivfflat_n++) {
-            int ivfflat_idx = nn_res[ivfflat_n].first;
-            for (int brute_n = 0; brute_n < N; brute_n++) {
-                if (brute_res[brute_n].first == ivfflat_idx) {
-                    correct++;
-                    break;
-                }
-            }
-        }
-        recall = (double)correct / N;
-        total_recall += recall;
+    //     // --- Recall@N ---
+    //     double recall = 0.0;
+    //     int correct = 0;
+    //     for (int ivfflat_n = 0; ivfflat_n < N; ivfflat_n++) {
+    //         int ivfflat_idx = nn_res[ivfflat_n].first;
+    //         for (int brute_n = 0; brute_n < N; brute_n++) {
+    //             if (brute_res[brute_n].first == ivfflat_idx) {
+    //                 correct++;
+    //                 break;
+    //             }
+    //         }
+    //     }
+    //     recall = (double)correct / N;
+    //     total_recall += recall;
 
-        for (int j = 0; j < ivfflat->n; ++j) {
-            fprintf(fout, "Nearest neighbor-%d: %d\n", j + 1, nn_res[j].first);
-            fprintf(fout, "distanceApproximate: %.6f\n", nn_res[j].second);
-            fprintf(fout, "distanceTrue: %.6f\n", brute_res[j].second);
-            fflush(fout);
-        // fprintf(fout, "distanceTrue: %.6f\n", res[j].second);
-        }
-        if (ivfflat->r) {
-                fprintf(fout, "R-near neighbors:\n");
-                for (size_t i = 0; i < range_res.size(); i++)
-                    fprintf(fout, "%d\n",range_res[i]);
-        }
+    //     for (int j = 0; j < ivfflat->n; ++j) {
+    //         fprintf(fout, "Nearest neighbor-%d: %d\n", j + 1, nn_res[j].first);
+    //         fprintf(fout, "distanceApproximate: %.6f\n", nn_res[j].second);
+    //         fprintf(fout, "distanceTrue: %.6f\n", brute_res[j].second);
+    //         fflush(fout);
+    //     // fprintf(fout, "distanceTrue: %.6f\n", res[j].second);
+    //     }
+    //     if (ivfflat->r) {
+    //             fprintf(fout, "R-near neighbors:\n");
+    //             for (size_t i = 0; i < range_res.size(); i++)
+    //                 fprintf(fout, "%d\n",range_res[i]);
+    //     }
 
-        // vector<int> top_clusters = QueryCentroidSearch(ivfflat, queryfile[i]);
-        // cout << "query " << i << " top clusters: ";
-        // for (int c : top_clusters) cout << c << " ";
-        // cout << endl;
-        // vector<pair<int, float>> res = QueryVectorSearch(ivfflat, queryfile[i], top_clusters, fout, dataset);
+    //     // vector<int> top_clusters = QueryCentroidSearch(ivfflat, queryfile[i]);
+    //     // cout << "query " << i << " top clusters: ";
+    //     // for (int c : top_clusters) cout << c << " ";
+    //     // cout << endl;
+    //     // vector<pair<int, float>> res = QueryVectorSearch(ivfflat, queryfile[i], top_clusters, fout, dataset);
 
-        // for (int j = 0; j < ivfflat->n; j++) {
-        //    cout << "index: " << res[j].first << " distance: " << res[j].second << endl;
-        // }
-        // cout << "query " << i << " end" << endl;
-    }
-    fprintf(fout, "Average AF: %.6f\n", total_af / Q);
-    fprintf(fout, "Recall@N: %.6f\n", total_recall / Q);
-    fprintf(fout, "QPS: %.6f\n", Q / total_ivfflat_time);
-    fprintf(fout, "tApproximateAverage: %.6f\n", total_ivfflat_time / Q);
-    fprintf(fout, "tTrueAverage: %.6f\n", total_brf_time / Q);
-    //fprintf(fout, "silhouette score: %.6f\n", silhouette_score);
+    //     // for (int j = 0; j < ivfflat->n; j++) {
+    //     //    cout << "index: " << res[j].first << " distance: " << res[j].second << endl;
+    //     // }
+    //     // cout << "query " << i << " end" << endl;
+    // }
+    // fprintf(fout, "Average AF: %.6f\n", total_af / Q);
+    // fprintf(fout, "Recall@N: %.6f\n", total_recall / Q);
+    // fprintf(fout, "QPS: %.6f\n", Q / total_ivfflat_time);
+    // fprintf(fout, "tApproximateAverage: %.6f\n", total_ivfflat_time / Q);
+    // fprintf(fout, "tTrueAverage: %.6f\n", total_brf_time / Q);
+    // //fprintf(fout, "silhouette score: %.6f\n", silhouette_score);
 
-    fclose(fout);
-    return;
+    // fclose(fout);
+    // return;
 }
 
 /*-------------------------------------CLUSTERING---------------------------------------*/

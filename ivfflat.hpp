@@ -30,7 +30,7 @@ struct IVFFLAT {
 };
 
 void IvfflatSearch(imagesVector&, IVFFLAT*, imagesVector, string output);
-void IvfflatSearch_KNN(imagesVector&, IVFFLAT*, imagesVector&, string);
+void IvfflatSearch_KNN(imagesVector&, IVFFLAT*, string);
 
 void clustering(imagesVector&, IVFFLAT*);
 void getNewCentroid(imagesVector&, IVFFLAT*, floatVec, std::default_random_engine&, int);
