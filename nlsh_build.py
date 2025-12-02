@@ -74,24 +74,24 @@ def build_knn_ivfflat(p, N):
     exec_path = "./search"
     output_path = "./tmp.txt"
 
-    result = subprocess.run(
-        [
-            exec_path,
-            "-ivfflat",
-            "-type", p.type,
-            "-seed", str(p.seed),
-            "-d", p.input,
-            "-kclusters", "4",
-            "-range", "false",
-            "-N", str(p.knn),
-            "-o", output_path,
-            "-nprobe", "2",
-            "-R", "500"
-        ],
-        capture_output=True,
-        text=True
-    )
-    print(result.stdout)
+    # result = subprocess.run(
+    #     [
+    #         exec_path,
+    #         "-ivfflat",
+    #         "-type", p.type,
+    #         "-seed", str(p.seed),
+    #         "-d", p.input,
+    #         "-kclusters", "4",
+    #         "-range", "false",
+    #         "-N", str(p.knn),
+    #         "-o", output_path,
+    #         "-nprobe", "2",
+    #         "-R", "500"
+    #     ],
+    #     capture_output=True,
+    #     text=True
+    # )
+    # print(result.stdout)
 
     print("\n[2] Building weighted graph from IVFFLAT output...")
     w_knn_graph = bwg_ivfflat(output_path, N)
@@ -108,11 +108,11 @@ def run_kahip(p, vwgt, xadj, adjcwgt, adjncy):
 
     edgecut, blocks = kahip.kaffpa(
         vwgt, xadj, adjcwgt, adjncy,
-        p.m,        # number of partitions
-        0.03,       # imbalance
-        1,          # suppress output
-        42,         # seed
-        2           # mode
+        p.m,            # number of partitions
+        p.imbalance,    # imbalance
+        1,              # suppress output
+        p.seed,         # seed
+        p.kahip_mode    # mode
     )
 
     print(f"[OK] KaHIP completed. Edgecut = {edgecut}")
@@ -130,7 +130,7 @@ def train_mlp(X, blocks, p):
 
     loader = DataLoader(
         TensorDataset(X_tensor, y_tensor),
-        batch_size=32,
+        p.batch_size,
         shuffle=True
     )
 
