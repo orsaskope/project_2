@@ -1,123 +1,186 @@
 import sys
-import os
-import subprocess
+import numpy as np
 import kahip
-from train_utils import train_model_cpu
+import subprocess
+import os
 from data_parser import BuildParser, read_mnist, read_sift
+import time
 
+import torch
+import torch.nn as nn
+from torch.utils.data import TensorDataset, DataLoader
+from graph_utils import compute_knn, build_weighted_knn_graph, knn_graph_to_csr, bwg_ivfflat, build_csr_ivfflat
+from models import MLPClassifier, build_dataloader, train_model, get_device
+
+
+
+# ==========================================================
+#                     HELPER FUNCTIONS
+# ==========================================================
+
+def get_choice():
+    choice = ""
+    while choice != "1" and choice != "2":
+        print("Choose kNN graph construction method:")
+        print(" 1) Brute Force (Python)")
+        print(" 2) IVFFLAT C++ program\n")
+        choice = input("Enter option (1 or 2): ").strip()
+        if choice != "1" and choice != "2":
+            print("Invalid choice. Please enter 1 or 2.\n")
+    return choice
+
+
+def load_dataset(p, choice):
+    if p.type == "mnist":
+        data = read_mnist(p.input)
+        X = np.array(data.images, dtype=np.float32)
+        N = data.number_of_images
+        print(f"Loaded MNIST: {len(X)} vectors (full N = {N})")
+    else:
+        data = read_sift(p.input)
+        X = np.array(data.dataset, dtype=np.float32)
+        N = data.count
+        print(f"Loaded SIFT: {len(X)} vectors (full N = {N})")
+
+    # If brute-force, use a debug subset
+    if choice == "1":
+        DEBUG_X = 1000
+        X = X[:DEBUG_X]
+        print(f"[DEBUG] Using only {len(X)} vectors for brute-force")
+
+    return X, N
+
+
+
+def build_knn_bruteforce(X, p):
+    
+    print("\n[1] Computing brute-force kNN graph...")
+    knn_neighbors = compute_knn(X, p.knn)
+
+    print("\n[2] Building weighted kNN graph...")
+    w_knn_graph = build_weighted_knn_graph(knn_neighbors)
+
+    print("\n[3] Converting weighted kNN graph to CSR arrays...")
+    return knn_graph_to_csr(w_knn_graph)
+
+
+def build_knn_ivfflat(p, N):
+
+    # these lines are the ones that create the tmp.txt 
+    # after the first creation they should be commented out
+
+    print("\n[1] Running IVFFLAT C++ search program...")
+
+    exec_path = "./search"
+    output_path = "./tmp.txt"
+
+    result = subprocess.run(
+        [
+            exec_path,
+            "-ivfflat",
+            "-type", p.type,
+            "-seed", str(p.seed),
+            "-d", p.input,
+            "-kclusters", "4",
+            "-range", "false",
+            "-N", str(p.knn),
+            "-o", output_path,
+            "-nprobe", "2",
+            "-R", "500"
+        ],
+        capture_output=True,
+        text=True
+    )
+    print(result.stdout)
+
+    print("\n[2] Building weighted graph from IVFFLAT output...")
+    w_knn_graph = bwg_ivfflat(output_path, N)
+
+    print("\n[3] Converting graph to CSR arrays...")
+    return build_csr_ivfflat(w_knn_graph, N)
+
+
+
+
+def run_kahip(p, vwgt, xadj, adjcwgt, adjncy):
+
+    print("\n[4] Running KaHIP partitioner...")
+
+    edgecut, blocks = kahip.kaffpa(
+        vwgt, xadj, adjcwgt, adjncy,
+        p.m,        # number of partitions
+        0.03,       # imbalance
+        1,          # suppress output
+        42,         # seed
+        2           # mode
+    )
+
+    print(f"[OK] KaHIP completed. Edgecut = {edgecut}")
+    print("First 20 block labels:", blocks[:20])
+    return edgecut, blocks
+
+
+
+def train_mlp(X, blocks, p):
+
+    print("\n[5] Training Neural LSH MLP model...")
+
+    X_tensor = torch.tensor(X, dtype=torch.float32)
+    y_tensor = torch.tensor(blocks, dtype=torch.long)
+
+    loader = DataLoader(
+        TensorDataset(X_tensor, y_tensor),
+        batch_size=32,
+        shuffle=True
+    )
+
+    model = MLPClassifier(d_in=X.shape[1], n_out=p.m)
+    train_model(model, loader, epochs=p.epochs, lr=1e-3)
+
+    print("\n[OK] Training finished.")
+    return model
+
+
+# ==========================================================
+#                     MAIN PIPELINE
+# ==========================================================
 def main():
     p = BuildParser(sys.argv)
 
-    # open files
-    if p.type == "mnist":
-        data = read_mnist(p.input)
-        N = data.number_of_images
+    print("======================================")
+    print("          NLSH BUILD PROGRAM          ")
+    print("======================================")
+    print(f"Dataset       : {p.input}")
+    print(f"Index Path    : {p.index_path}")
+    print(f"Type          : {p.type}")
+    print(f"kNN           : {p.knn}")
+    print(f"m (clusters)  : {p.m}")
+    print(f"epochs        : {p.epochs}")
+    print("======================================\n")
+
+    # Step 1: user chooses kNN method
+    choice = get_choice()
+
+    # Step 2: load dataset based on choice
+    X, N = load_dataset(p, choice)
+
+    if choice == "1":
+        xadj, adjncy, adjcwgt, vwgt = build_knn_bruteforce(X, p)
     else:
-        data = read_sift(p.input)
-        N = data.count
-
-    print("Dataset loaded.")
-    # exec_path = "./search"
-    # result = subprocess.run(
-    # [exec_path, "-ivfflat",
-    # "-type", "mnist",
-    # "-seed", "9",
-    # "-d", "input.dat",
-    # "-kclusters", "4",
-    # "-range", "false",
-    # "-N", str(p.knn),
-    # "-o", "tmp.txt",
-    # "-nprobe", "2",
-    # "-R", "500"],
-    # capture_output=True,
-    # text=True)
-    # print("STDOUT:\n", result.stdout)
-
-    output_path = "./tmp.txt"
-    graph = build_weighted_graph(output_path, N)
-    xadj, adjncy, adjcwgt, vwgt = build_csr(graph, N)
-
-    edgecut, blocks = kahip.kaffpa(vwgt, xadj, adjcwgt, adjncy, p.m, p.imbalance, False, p.seed, p.kahip_mode)
-    model = train_model_cpu(
-    X,
-    y,
-    nodes=p.nodes,
-    layers=p.layers,
-    m=p.m,
-    batch=p.batch_size,
-    epochs=p.epochs,
-    lr=p.lr
-)
+        xadj, adjncy, adjcwgt, vwgt = build_knn_ivfflat(p, N)
 
 
-# Read first project's output to build the graph
-def build_weighted_graph(path, N):
-    graph = {}  #ID: neighbour list
-    fd = open(path, "r")
-    for line in fd:
-        line = line.strip()
-        # Get every neighbour
-        if line.startswith("NODE"):
-            parts = line.split(":") # Splits the line in ":" since the format of the output file is nodeID:Neighbours
-            left = parts[0]
-            right = parts[1]
+    # Step 3: KaHIP partitioning
+    edgecut, blocks = run_kahip(p, vwgt, xadj, adjcwgt, adjncy)
 
-            qid = int(left.split()[1]) # Takes the query id ignoring the word "NODE"
-            neighs_str = right.strip().split()
-            neighs = []
-            # Append each neighbour
-            for x in neighs_str:
-                neighs.append(int(x))
 
-            graph[qid] = neighs
-    fd.close()
+    # Step 4: Training
+    train_mlp(X, blocks, p)
 
-    print("\n=== Parsed graph ===")
-    # for q, neighs in graph.items():
-    #     print(f"Query {q} -> {neighs}")
 
-    weighted = {} # A dictionary of dictionaries
-    for q in graph:
-        for neighbor in graph[q]:
-            if neighbor == q:   continue
+    print("Full NLSH pipeline completed!")
 
-            # If vectors are not in graph, create a dictionary to keep their neighbours w the weights
-            if q not in weighted:
-                weighted[q] = {}
-            if neighbor not in weighted:
-                weighted[neighbor] = {}
 
-            if q in weighted[neighbor]:
-                weighted[neighbor][q] += 1
-                weighted[q][neighbor] += 1
-            else:
-                weighted[neighbor][q] = 1
-                weighted[q][neighbor] = 1
-
-    # Make sure all nodes are in weighted graph
-    for i in range(N):
-        if i not in weighted:
-            print("found missing node:", i)
-            weighted[i] = {}
-    return weighted
-
-def build_csr(graph, N):
-    xadj = [0]  # Offset: were node's neighbours are in adjncy. (xadj[i+1]: end index)
-    adjncy = [] # adjacency list
-    adjcwgt = [] # adjacency weight
-    vwgt = [1]*N   # nodes weight
-
-    for i in range(N):
-        neighs = list(graph[i].keys())
-        for n in neighs:
-            adjncy.append(n)
-            adjcwgt.append(graph[i][n])
-        
-        xadj.append(len(adjncy))
-
-    print("xadj: %d adjncy: %d adjcwgt: %d vwgt: %d", len(xadj), len(adjncy), len(adjcwgt), len(vwgt))
-
-    return xadj, adjncy, adjcwgt, vwgt
 
 if __name__ == "__main__":
     main()

@@ -162,18 +162,28 @@ def SearchParser(argv):
         elif arg == "-range":
             i += 1
             validArgument(argv, i)
-            if argv[i] in ("True", "true", "1"):    p.range = True
-            elif argv[i] in ("False","false", "0"): p.range = False
+            if argv[i] in ("True", "true"):    p.range = True
+            elif argv[i] in ("False","false"): p.range = False
             else:
                 print("Invalid argument for parameter -range")
                 sys.exit(1)
         i += 1
     
-    if p.input is None: sys.exit(1)
-    if p.query is None: sys.exit(1)
-    if p.path is None: sys.exit(1)
-    if p.output is None: sys.exit(1)
-    if p.type is None: sys.exit(1)
+    if p.input is None: 
+        print("there is no input file")
+        sys.exit(1)
+    if p.query is None: 
+        print("there is no query file")
+        sys.exit(1)
+    if p.path is None: 
+        print("there is no path")
+        sys.exit(1)
+    if p.output is None:
+        print("there is no output file")
+        sys.exit(1)
+    if p.type is None: 
+        print("there is not a given type")
+        sys.exit(1)
 
     if p.R == 0:
         if p.type == "sift":
@@ -247,25 +257,27 @@ def read_sift(path):
     file_size = fd.tell()
     fd.seek(0)
 
-    entry_size = 4 + 128 * 4
+    entry_size = 4 + 128 * 4  # 4 bytes for dim, 128 floats
     count = file_size // entry_size
 
     for i in range(count):
-        # Each SIFT vector entry: 4 bytes (ID or dim) + 128 floats = 4 + 128*4 = 516 bytes
         dim_bytes = fd.read(4)
         if len(dim_bytes) < 4:
             print("Error reading SIFT header")
             exit(1)
-        
-        dim = struct.unpack("i", dim_bytes)[0]
+
+        dim = struct.unpack("<i", dim_bytes)[0]   # LITTLE ENDIAN
+        if dim != 128:
+            print("Invalid SIFT dimension, expected 128")
+            exit(1)
+
         vec_bytes = fd.read(128 * 4)
         if len(vec_bytes) < 128 * 4:
             print("Error reading SIFT vector")
             exit(1)
-        
-        vec = list(struct.unpack("128f", vec_bytes))
+
+        vec = list(struct.unpack("<128f", vec_bytes))  # LITTLE ENDIAN FLOATS
         dataset.append(vec)
 
     fd.close()
-
     return SiftData(count, 128, dataset)
