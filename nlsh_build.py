@@ -125,17 +125,26 @@ def train_mlp(X, blocks, p):
 
     print("\n[5] Training Neural LSH MLP model...")
 
-    X_tensor = torch.tensor(X, dtype=torch.float32)
-    y_tensor = torch.tensor(blocks, dtype=torch.long)
+    # Build dataloader using correct batch size
+    loader = build_dataloader(X, blocks, batch_size=p.batch_size)
 
-    loader = DataLoader(
-        TensorDataset(X_tensor, y_tensor),
-        p.batch_size,
-        shuffle=True
+    # Build model using ALL arguments from p
+    model = MLPClassifier(
+        d_in=X.shape[1],
+        n_out=p.m,
+        hidden_dim=p.nodes,
+        num_layers=p.layers,
+        dropout=p.dropout,
+        batchnorm=p.batchnorm
     )
 
-    model = MLPClassifier(d_in=X.shape[1], n_out=p.m)
-    train_model(model, loader, epochs=p.epochs, lr=1e-3)
+    # Train model using correct learning rate + epochs
+    train_model(
+        model=model,
+        loader=loader,
+        epochs=p.epochs,
+        lr=p.lr
+    )
 
     print("\n[OK] Training finished.")
     return model

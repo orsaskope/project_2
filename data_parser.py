@@ -21,6 +21,8 @@ class BuildParams:
         self.batch_size = 128
         self.lr = 0.001
         self.seed = 1
+        self.dropout = 0.2      # ποσοστό dropout
+        self.batchnorm = False  # αν θα χρησιμοποιηθεί batchnorm
 
 def BuildParser(argv):
     p = BuildParams()

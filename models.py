@@ -7,15 +7,26 @@ from torch.utils.data import DataLoader, TensorDataset
 # MLP Neural Network
 # ---------------------------------------------------
 class MLPClassifier(nn.Module):
-    def __init__(self, d_in, n_out):
+    def __init__(self, d_in, n_out, hidden_dim, num_layers, dropout=0.2, batchnorm=False):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(d_in, 512),
-            nn.ReLU(),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Linear(512, n_out)
-        )
+        layers = []
+
+        layers.append(nn.Linear(d_in, hidden_dim))
+        if batchnorm:
+            layers.append(nn.BatchNorm1d(hidden_dim))
+        layers.append(nn.ReLU())
+        layers.append(nn.Dropout(dropout))
+
+        for _ in range(num_layers - 2):
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+            if batchnorm:
+                layers.append(nn.BatchNorm1d(hidden_dim))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout))
+
+        layers.append(nn.Linear(hidden_dim, n_out))
+        
+        self.net = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.net(x)
@@ -41,6 +52,8 @@ def build_dataloader(X, y, batch_size=32):
 def train_model(model, loader, epochs=10, lr=1e-3):
     device = get_device()
     model = model.to(device)
+
+    model.train() 
 
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.CrossEntropyLoss()
