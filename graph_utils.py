@@ -34,15 +34,21 @@ def compute_knn(dataset: np.ndarray, k: int):
 # ---------------------------------------------------
 def build_weighted_knn_graph(knn_neighbors):
     N = len(knn_neighbors)
-    w_knn_graph = {}
+    w_knn = {i: {} for i in range(N)}
 
     for i in range(N):
-        edges = {}
         for j in knn_neighbors[i]:
-            edges[j] = 2 if i in knn_neighbors[j] else 1
-        w_knn_graph[i] = edges
+            if i == j:
+                continue
 
-    return w_knn_graph
+            # Determine mutual (weight=2) or one-sided (weight=1)
+            weight = 2 if i in knn_neighbors[j] else 1
+
+            # Insert BOTH directions to make graph undirected
+            w_knn[i][j] = weight
+            w_knn[j][i] = weight
+
+    return w_knn
 
 
 # ---------------------------------------------------

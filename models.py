@@ -72,7 +72,8 @@ def train_model(model, loader, epochs=10, lr=1e-3):
 
             total_loss += loss.item()
 
-        print(f"Epoch {epoch+1}/{epochs}  Loss={total_loss:.4f}")
+        avg_loss = total_loss / len(loader)
+        print(f"Epoch {epoch+1}/{epochs}  Loss={avg_loss:.4f}")
 
     print("[OK] Training complete.")
     return model

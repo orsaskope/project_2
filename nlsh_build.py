@@ -44,7 +44,7 @@ def load_dataset(p, choice):
 
     # If brute-force, use a debug subset
     if choice == "1":
-        DEBUG_X = 1000
+        DEBUG_X = 5000
         X = X[:DEBUG_X]
         print(f"[DEBUG] Using only {len(X)} vectors for brute-force")
 
@@ -149,6 +149,49 @@ def train_mlp(X, blocks, p):
     print("\n[OK] Training finished.")
     return model
 
+def save_index(path, model, blocks, inverted_lists, p, dim):
+
+    index = {
+        "model_state": model.state_dict(),
+
+        # KaHIP partition labels
+        "blocks": np.array(blocks, dtype=np.int32),
+
+        # The actual inverted index
+        "inverted_lists": inverted_lists,
+
+        # --- Metadata ---
+        "m": p.m,
+        "dimension": dim,
+        "seed": p.seed,
+        "layers": p.layers,
+        "nodes": p.nodes,
+        "dropout": p.dropout,
+        "batchnorm": p.batchnorm,
+        "knn": p.knn,
+        "kahip_mode": p.kahip_mode,
+        "imbalance": p.imbalance,
+    }
+
+    # PRINT FOR DEBUG
+    print("\n[SAVE_INDEX] Index contents BEFORE saving:")
+    print("Keys:", list(index.keys()))
+    print("Blocks sample:", index["blocks"][:10])
+    print("Inverted lists sample (first 3):", [l[:5] for l in index["inverted_lists"][:3]])
+    print("Metadata:", {k: index[k] for k in ["m","dimension","layers","nodes","dropout","batchnorm"]})
+
+    torch.save(index, path)
+    print(f"\n[OK] Index saved to {path}")
+
+def build_inverted_lists(blocks, m):
+
+    inverted = [[] for _ in range(m)]
+
+
+    for idx, block in enumerate(blocks):
+        inverted[block].append(idx)
+
+    return inverted
 
 # ==========================================================
 #                     MAIN PIPELINE
@@ -184,7 +227,13 @@ def main():
 
 
     # Step 4: Training
-    train_mlp(X, blocks, p)
+    model = train_mlp(X, blocks, p)
+
+    # Step 5: Build inverted lists
+    inverted_lists = build_inverted_lists(blocks, p.m)
+
+    # Step 6: Save index
+    save_index(p.index_path, model, blocks, inverted_lists, p, dim=X.shape[1])
 
 
     print("Full NLSH pipeline completed!")
