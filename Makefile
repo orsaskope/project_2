@@ -3,7 +3,7 @@ HEADERS = params.hpp ivfflat.hpp
 SOURCE = search.cpp parameters.cpp IVFFLAT.cpp
 EXEC = search
 
-ARGS = -ivfflat -type mnist -seed 9 -d ../../PRJ2/project_2/input.dat -q ../../PRJ2/project_2/query.dat -kclusters 4 -range true -N 5 -o output.txt -nprobe 2 -sample_pq true -R 500
+ARGS = -ivfflat -type mnist -seed 9 -d input.dat -q query.dat -kclusters 64 -range true -N 5 -o output.txt -nprobe 4 -sample_pq true -R 500
 
 CC =    g++
 FLAGS = -Wall -g

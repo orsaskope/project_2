@@ -13,18 +13,15 @@ def compute_knn(dataset: np.ndarray, k: int):
     knn_graph = [[] for _ in range(N)]
 
     for i in range(N):
-        start_time = time.time()
 
         diff = dataset - dataset[i]
-        dists = np.linalg.norm(diff, axis=1)
+        dists = np.linalg.norm(diff, axis=1)    # euclidean distances to all points
         dists[i] = np.inf  # prevent self-match
 
-        idx = np.argpartition(dists, k)[:k]
-        top_k = sorted([(dists[j], j) for j in idx])
+        idx = np.argpartition(dists, k)[:k]     # get indices of k smallest distances
+        top_k = sorted([(dists[j], j) for j in idx])    #sort k distances
 
-        knn_graph[i] = [j for (_, j) in top_k]
-
-        print(f"[INFO] Vector {i}: kNN in {time.time() - start_time:.4f}s")
+        knn_graph[i] = [j for (_, j) in top_k]  #store k nearest neighbors
 
     return knn_graph
 
@@ -38,13 +35,13 @@ def build_weighted_knn_graph(knn_neighbors):
 
     for i in range(N):
         for j in knn_neighbors[i]:
-            if i == j:
+            if i == j:     
                 continue
 
-            # Determine mutual (weight=2) or one-sided (weight=1)
+            # determine mutual (weight=2) or one-sided (weight=1)
             weight = 2 if i in knn_neighbors[j] else 1
 
-            # Insert BOTH directions to make graph undirected
+            # insert BOTH directions to make graph undirected
             w_knn[i][j] = weight
             w_knn[j][i] = weight
 
@@ -62,11 +59,11 @@ def knn_graph_to_csr(w_knn_graph):
     vwgt = [1] * N
 
     for i in range(N):
-        neighbors = w_knn_graph[i]
+        neighbors = w_knn_graph[i]  # Neighbors of node i 
         for j, w in neighbors.items():
-            adjncy.append(j)
-            adjcwgt.append(w)
-        xadj.append(len(adjncy))
+            adjncy.append(j)        # Add neighbor index to flat list
+            adjcwgt.append(w)       # Add edge weight
+        xadj.append(len(adjncy))    # Mark where next node's neighbors will start
 
     return xadj, adjncy, adjcwgt, vwgt
 
@@ -80,6 +77,7 @@ def knn_graph_to_csr(w_knn_graph):
 # Build weighted kNN graph (IVFFLAT)
 # ---------------------------------------------------
 
+#initially this function analyzes the path file thats of the form Node id: Neighbor1 Neighbor2 Neighbor3 .... then it creates the weighted graph
 def bwg_ivfflat(path, N):
     graph = {}  #ID: neighbour list
     fd = open(path, "r")
@@ -143,8 +141,8 @@ def build_csr_ivfflat(graph, N):
     for i in range(N):
         neighs = list(graph[i].keys())
         for n in neighs:
-            adjncy.append(n)
-            adjcwgt.append(graph[i][n])
+            adjncy.append(n)    # Add neighbor index
+            adjcwgt.append(graph[i][n])     # Add edge weight
         
         xadj.append(len(adjncy))
 

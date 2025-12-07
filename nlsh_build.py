@@ -18,6 +18,7 @@ from models import MLPClassifier, build_dataloader, train_model, get_device
 #                     HELPER FUNCTIONS
 # ==========================================================
 
+# returns user choice between brute force or ivfflat
 def get_choice():
     choice = ""
     while choice != "1" and choice != "2":
@@ -36,13 +37,15 @@ def load_dataset(p, choice):
         X = np.array(data.images, dtype=np.float32)
         N = data.number_of_images
         print(f"Loaded MNIST: {len(X)} vectors (full N = {N})")
+        X = X / 255.0   #normalization of the data
     else:
         data = read_sift(p.input)
         X = np.array(data.dataset, dtype=np.float32)
         N = data.count
         print(f"Loaded SIFT: {len(X)} vectors (full N = {N})")
+        X = X / 218.0   #normalization of the data
 
-    # If brute-force, use a debug subset
+    # If brute-force, use a debug subset because brute force is extremely slow for the actual datasets.
     if choice == "1":
         DEBUG_X = 5000
         X = X[:DEBUG_X]
@@ -51,7 +54,7 @@ def load_dataset(p, choice):
     return X, N
 
 
-
+#in case of brute force we call the 3 functions in order to create CSR
 def build_knn_bruteforce(X, p):
     
     print("\n[1] Computing brute-force kNN graph...")
@@ -63,35 +66,36 @@ def build_knn_bruteforce(X, p):
     print("\n[3] Converting weighted kNN graph to CSR arrays...")
     return knn_graph_to_csr(w_knn_graph)
 
-
+#here we call the infflat subprocess if tmp.txt doesnt already exists
 def build_knn_ivfflat(p, N):
-
-    # these lines are the ones that create the tmp.txt 
-    # after the first creation they should be commented out
 
     print("\n[1] Running IVFFLAT C++ search program...")
 
     exec_path = "./search"
     output_path = "./tmp.txt"
 
-    # result = subprocess.run(
-    #     [
-    #         exec_path,
-    #         "-ivfflat",
-    #         "-type", p.type,
-    #         "-seed", str(p.seed),
-    #         "-d", p.input,
-    #         "-kclusters", "4",
-    #         "-range", "false",
-    #         "-N", str(p.knn),
-    #         "-o", output_path,
-    #         "-nprobe", "2",
-    #         "-R", "500"
-    #     ],
-    #     capture_output=True,
-    #     text=True
-    # )
-    # print(result.stdout)
+    if os.path.exists(output_path):
+        print("[INFO] tmp.txt already exists → skipping IVFFLAT subprocess.")
+    else:
+        print("[INFO] tmp.txt does not exist → generating it now...")
+        result = subprocess.run(
+            [
+                exec_path,
+                "-ivfflat",
+                "-type", p.type,
+                "-seed", str(p.seed),
+                "-d", p.input,
+                "-kclusters", "64",
+                "-range", "false",
+                "-N", str(p.knn),
+                "-o", output_path,
+                "-nprobe", "4",
+                "-R", "500"
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    print(result.stdout)
 
     print("\n[2] Building weighted graph from IVFFLAT output...")
     w_knn_graph = bwg_ivfflat(output_path, N)
@@ -101,7 +105,7 @@ def build_knn_ivfflat(p, N):
 
 
 
-
+#this function simply calls kahip and returns the results (edgecut,blocks)
 def run_kahip(p, vwgt, xadj, adjcwgt, adjncy):
 
     print("\n[4] Running KaHIP partitioner...")
@@ -115,11 +119,14 @@ def run_kahip(p, vwgt, xadj, adjcwgt, adjncy):
         p.kahip_mode    # mode
     )
 
-    print(f"[OK] KaHIP completed. Edgecut = {edgecut}")
-    print("First 20 block labels:", blocks[:20])
     return edgecut, blocks
 
 
+#this function trains the model by 
+#
+#1)building the datalaoder
+#2)creating the model
+#3)training it using the train model function
 
 def train_mlp(X, blocks, p):
 
@@ -138,7 +145,7 @@ def train_mlp(X, blocks, p):
         batchnorm=p.batchnorm
     )
 
-    # Train model using correct learning rate + epochs
+    # Train model using learning rate and epochs
     train_model(
         model=model,
         loader=loader,
@@ -149,6 +156,7 @@ def train_mlp(X, blocks, p):
     print("\n[OK] Training finished.")
     return model
 
+#this function simply saves the index created with all the necessary nlsh information (KaHIP partition labels,inverted lists,Metadata)
 def save_index(path, model, blocks, inverted_lists, p, dim):
 
     index = {
@@ -173,22 +181,16 @@ def save_index(path, model, blocks, inverted_lists, p, dim):
         "imbalance": p.imbalance,
     }
 
-    # PRINT FOR DEBUG
-    print("\n[SAVE_INDEX] Index contents BEFORE saving:")
-    print("Keys:", list(index.keys()))
-    print("Blocks sample:", index["blocks"][:10])
-    print("Inverted lists sample (first 3):", [l[:5] for l in index["inverted_lists"][:3]])
-    print("Metadata:", {k: index[k] for k in ["m","dimension","layers","nodes","dropout","batchnorm"]})
 
-    torch.save(index, path)
+    torch.save(index, path)    # save index to path given by user
     print(f"\n[OK] Index saved to {path}")
 
+#this function creates an inverted list showing how many vectors each block has
 def build_inverted_lists(blocks, m):
 
-    inverted = [[] for _ in range(m)]
+    inverted = [[] for _ in range(m)] #create empty lists for all blocks
 
-
-    for idx, block in enumerate(blocks):
+    for idx, block in enumerate(blocks): #fill them with the vector ids
         inverted[block].append(idx)
 
     return inverted
@@ -213,7 +215,7 @@ def main():
     # Step 1: user chooses kNN method
     choice = get_choice()
 
-    # Step 2: load dataset based on choice
+    # Step 2: load dataset based on choice , followed by creation of CSR depending on the choice of the user
     X, N = load_dataset(p, choice)
 
     if choice == "1":
@@ -226,10 +228,10 @@ def main():
     edgecut, blocks = run_kahip(p, vwgt, xadj, adjcwgt, adjncy)
 
 
-    # Step 4: Training
+    # Step 4: training of the model
     model = train_mlp(X, blocks, p)
 
-    # Step 5: Build inverted lists
+    # Step 5: build inverted lists
     inverted_lists = build_inverted_lists(blocks, p.m)
 
     # Step 6: Save index
